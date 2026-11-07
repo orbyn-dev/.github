@@ -4,10 +4,10 @@
 
 ## Why a CLA, and why this base
 
-- Orbyn's apps are licensed under PolyForm Strict 1.0.0, which lets no one modify or share the code. The engine is planned to be dual-licensed. Taking outside contributions therefore needs a grant broad enough for Us to keep relicensing them.
+- **Licences.** Orbyn's apps (orbyn-planner, orbyn-engineering) and orbyn.dev are under PolyForm Strict 1.0.0, which lets no one modify or share the code. The engine (orbyn-engine) is moving to MIT OR Apache-2.0. Taking outside contributions across both needs a grant broad enough for Us to license them under any of these, and commercially.
 - **Base text:** the Harmony Individual Contributor License Agreement 1.0. Its own text says it is licensed under CC BY 3.0, so it can be adapted with credit.
 - **Apache ICLA, not used:** the Apache Individual CLA (https://www.apache.org/licenses/icla.pdf) was considered and not used. The document carries no licence or reuse grant of its own; the Apache-2.0 notice on apache.org is the website footer and covers the ASF's software. No Apache text is copied here.
-- **Outbound option:** Option Five ("any licence") was chosen so that one agreement covers PolyForm Strict, the dual-licensed engine and any future commercial licence.
+- **Outbound option:** Option Five ("any licence") was chosen so that one agreement covers PolyForm Strict, the engine's MIT OR Apache-2.0 and any future commercial licence. The engine keeps the CLA even though it is permissive, so one rule applies to every covered project and a commercial licence stays possible.
 
 ## Decisions for counsel and Anh
 
@@ -19,10 +19,9 @@
 6. **Minors.** 3(c) keeps Harmony's line that a parent or guardian should accept for anyone under eighteen. With acceptance by comment there is no way to verify this. Should the age line change, or should minors be refused?
 7. **Entity version.** The draft is the individual version only. Contributors whose employer owns their work need an entity agreement (Harmony has one, also CC BY 3.0). Should it be added now or on request?
 8. **Contributions made before this Agreement.** Open pull requests from outside contributors exist today. Should their authors accept this Agreement before merge, with the acceptance stated to cover their earlier submissions?
-9. **Which projects.** The Agreement covers every Orbyn project whose repository links to it.
-   - Proposed: orbyn-engine, orbyn-planner, orbyn-engineering and orbyn.dev.
+9. **Which projects (decided).** The Agreement covers orbyn-engine, orbyn-planner, orbyn-engineering and orbyn.dev.
    - orbyn-designs is private. If outsiders ever get access, they would also need a confidentiality agreement, which this Agreement does not provide.
-10. **The MIT skills library** (orbyn-fullstack-skills). Under MIT, inbound equals outbound, and a Developer Certificate of Origin sign-off (`git commit -s`) is usually enough. A CLA is only needed if Anh might ever relicense the library away from MIT. **Question for Anh: might the skills library ever leave MIT?**
+10. **The MIT skills library (decided).** orbyn-fullstack-skills stays MIT for good. It doesn't use this Agreement: inbound equals outbound, with a Developer Certificate of Origin sign-off (`git commit -s`) on every commit.
 
 ## Records
 
