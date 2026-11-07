@@ -1,0 +1,108 @@
+# DRAFT, not in force. A reusable check that the author of a pull request has accepted the
+# Orbyn Individual Contributor Licence Agreement. It runs only when a repository calls it
+# (on: workflow_call); no repository does yet. See ../../REVIEW.md.
+#
+# The caller runs on pull_request_target and issue_comment. This workflow never checks out
+# or runs code from the pull request, so pull_request_target is safe here.
+name: Contributor licence agreement
+
+on:
+  workflow_call:
+    inputs:
+      agreement-version:
+        description: Version of CLA.md being accepted
+        type: string
+        default: "0.1"
+      signatures-repository:
+        description: Private repository holding signatures/icla-<version>.json
+        type: string
+        default: orbyn-dev/cla-signatures
+      allowed:
+        description: Comma-separated logins that never need to sign (maintainers and bots)
+        type: string
+        default: "kinqsradio,dependabot[bot],github-actions[bot]"
+    secrets:
+      signatures-token:
+        description: Fine-grained token with contents read and write on the signatures repository only
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request_target' || (github.event_name == 'issue_comment' && github.event.issue.pull_request)
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          VERSION: ${{ inputs.agreement-version }}
+          SIGNATURES: ${{ inputs.signatures-repository }}
+          ALLOWED: ${{ inputs.allowed }}
+          SIGNATURES_TOKEN: ${{ secrets.signatures-token }}
+        with:
+          script: |
+            const version = process.env.VERSION;
+            const [sigOwner, sigRepo] = process.env.SIGNATURES.split('/');
+            const path = `signatures/icla-${version}.json`;
+            const phrase = `I have read the Orbyn Individual Contributor Licence Agreement version ${version} and I agree to it.`;
+            const marker = `<!-- orbyn-cla:${version} -->`;
+            const allowed = new Set(process.env.ALLOWED.split(',').map((login) => login.trim().toLowerCase()).filter(Boolean));
+            const store = getOctokit(process.env.SIGNATURES_TOKEN);
+            const { owner, repo } = context.repo;
+            const number = context.payload.pull_request?.number ?? context.payload.issue.number;
+            const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+            const author = pull.user;
+
+            async function load() {
+              try {
+                const { data } = await store.rest.repos.getContent({ owner: sigOwner, repo: sigRepo, path });
+                return { list: JSON.parse(Buffer.from(data.content, 'base64').toString('utf8')), sha: data.sha };
+              } catch (error) {
+                if (error.status === 404) return { list: [], sha: undefined };
+                throw error;
+              }
+            }
+
+            if (allowed.has(author.login.toLowerCase())) {
+              core.info(`${author.login} is on the allowed list.`);
+              return;
+            }
+
+            let { list, sha } = await load();
+            let signed = list.some((entry) => entry.github_id === author.id);
+
+            const comment = context.payload.comment;
+            if (!signed && comment && comment.user.id === author.id && comment.body.trim() === phrase) {
+              list.push({
+                github_id: author.id,
+                login: author.login,
+                signed_at: new Date().toISOString(),
+                pull_request: pull.html_url,
+                comment_id: comment.id,
+              });
+              await store.rest.repos.createOrUpdateFileContents({
+                owner: sigOwner, repo: sigRepo, path, sha,
+                message: `Record CLA ${version} acceptance by ${author.login}`,
+                content: Buffer.from(JSON.stringify(list, null, 2) + '\n').toString('base64'),
+              });
+              signed = true;
+              core.info(`Recorded ${author.login}.`);
+            }
+
+            if (signed) return;
+
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: number });
+            if (!comments.some((existing) => existing.body?.includes(marker))) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: number,
+                body: [
+                  marker,
+                  `Thanks for your contribution, @${author.login}. Before we can merge it, please read the [Orbyn Individual Contributor Licence Agreement](https://github.com/orbyn-dev/.github/blob/main/CLA.md) and, if you agree, reply with exactly:`,
+                  '',
+                  `> ${phrase}`,
+                ].join('\n'),
+              });
+            }
+            core.setFailed(`${author.login} has not accepted the Orbyn CLA version ${version}.`);
