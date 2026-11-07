@@ -1,0 +1,156 @@
+# Interim licence grant for outside contributors, until the reviewed contributor
+# licence agreement replaces it.
+#
+# A product repository calls this workflow from `examples/licence-grant-caller.yml`.
+# It sets the commit status "Licence grant" on the pull request's head commit:
+# - success for organisation members and bots;
+# - pending until the pull request's author has posted the grant sentence as a comment;
+# - success once they have.
+#
+# It never checks out or runs code from the pull request. Comment text is only read as
+# data inside this script. That makes `pull_request_target` and `issue_comment` safe here.
+name: Licence grant
+
+on:
+  workflow_call:
+    inputs:
+      pull:
+        description: Pull request number (only when called from workflow_dispatch)
+        type: string
+        default: ""
+      exempt:
+        description: Comma-separated logins that never need the grant, in addition to organisation members and bots
+        type: string
+        default: "kinqsradio"
+    secrets:
+      CLA_SIGNATURES_TOKEN:
+        description: Optional fine-grained token with contents write on orbyn-dev/cla-signatures. Without it, the PR comment is the record.
+        required: false
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  statuses: write
+
+jobs:
+  licence-grant:
+    name: Check the licence grant
+    runs-on: ubuntu-latest
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
+    concurrency:
+      group: licence-grant-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number || inputs.pull }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PULL: ${{ inputs.pull }}
+          EXEMPT: ${{ inputs.exempt }}
+          SIGNATURES_TOKEN: ${{ secrets.CLA_SIGNATURES_TOKEN }}
+        with:
+          script: |
+            // matcher:start
+            const SENTENCE = 'I grant Anh Dang a perpetual, irrevocable, worldwide licence to use, modify, sublicense and relicense this contribution under any terms.';
+            const ASK = '<!-- orbyn:licence-grant:ask -->';
+            const THANKS = '<!-- orbyn:licence-grant:thanks -->';
+            /** Drop quote markers, Markdown emphasis, smart quotes and extra spaces, so a copied quote still counts. */
+            function normalise(text) {
+              return String(text ?? '')
+                .replace(/\r/g, '')
+                .split('\n')
+                .map((line) => line.replace(/^\s*>\s?/, ''))
+                .join(' ')
+                .replace(/[‘’]/g, "'")
+                .replace(/[“”"`*_]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+            }
+            /** True when a comment contains the whole grant sentence, ignoring formatting. */
+            function grants(body) {
+              return normalise(body).includes(normalise(SENTENCE));
+            }
+            /** Organisation members, the listed logins and bots never need the grant. */
+            function isExempt(pull, exemptLogins) {
+              const login = pull.user.login.toLowerCase();
+              return pull.user.type === 'Bot'
+                || ['OWNER', 'MEMBER'].includes(pull.author_association)
+                || exemptLogins.includes(login);
+            }
+            // matcher:end
+
+            const { owner, repo } = context.repo;
+            const number = Number(context.payload.pull_request?.number ?? context.payload.issue?.number ?? process.env.PULL);
+            if (!number) { core.setFailed('No pull request number.'); return; }
+            const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+            const exemptLogins = process.env.EXEMPT.split(',').map((login) => login.trim().toLowerCase()).filter(Boolean);
+            const status = (state, description) => github.rest.repos.createCommitStatus({
+              owner, repo, sha: pull.head.sha, state, description, context: 'Licence grant',
+              target_url: `${pull.html_url}#issuecomment`,
+            });
+
+            if (isExempt(pull, exemptLogins)) {
+              await status('success', 'Not needed for organisation members and bots');
+              return;
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: number });
+            const grant = comments.find((comment) => comment.user.id === pull.user.id && grants(comment.body));
+            const posted = (marker) => comments.some((comment) => comment.body?.includes(marker));
+
+            if (!grant) {
+              await status('pending', 'Waiting for the licence grant sentence from the author');
+              if (!posted(ASK)) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: number,
+                  body: [
+                    ASK,
+                    `Thanks for your contribution, @${pull.user.login}!`,
+                    '',
+                    'Orbyn\'s contributor licence agreement is still being drafted. Until it is ready, each pull request from outside the organisation needs a short licence grant from its author before it can be merged. It lets us keep using your work in Orbyn under the licences we choose, including future ones. You keep the copyright in your work.',
+                    '',
+                    'Please reply on this pull request with exactly this sentence:',
+                    '',
+                    '```',
+                    SENTENCE,
+                    '```',
+                    '',
+                    'The "Licence grant" check turns green as soon as you post it.',
+                  ].join('\n'),
+                });
+              }
+              return;
+            }
+
+            await status('success', 'Licence grant recorded');
+            if (!posted(THANKS)) {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: number,
+                body: `${THANKS}\nThanks, licence grant recorded.`,
+              });
+            }
+
+            if (!process.env.SIGNATURES_TOKEN) return;
+            const store = getOctokit(process.env.SIGNATURES_TOKEN);
+            const path = 'grants/licence-grant.json';
+            let list = [];
+            let sha;
+            try {
+              const { data } = await store.rest.repos.getContent({ owner: 'orbyn-dev', repo: 'cla-signatures', path });
+              list = JSON.parse(Buffer.from(data.content, 'base64').toString('utf8'));
+              sha = data.sha;
+            } catch (error) {
+              if (error.status !== 404) throw error;
+            }
+            if (list.some((entry) => entry.pull_request === pull.html_url)) return;
+            list.push({
+              github_id: pull.user.id,
+              login: pull.user.login,
+              pull_request: pull.html_url,
+              comment: grant.html_url,
+              granted_at: grant.created_at,
+            });
+            await store.rest.repos.createOrUpdateFileContents({
+              owner: 'orbyn-dev', repo: 'cla-signatures', path, sha,
+              message: `Record licence grant by ${pull.user.login} on ${owner}/${repo}#${number}`,
+              content: Buffer.from(JSON.stringify(list, null, 2) + '\n').toString('base64'),
+            });
