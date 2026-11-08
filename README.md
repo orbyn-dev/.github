@@ -26,6 +26,8 @@ Product repositories call it from `examples/licence-grant-caller.yml`.
 
 Exemptions are by numeric account id (`allowed` input) and by `MEMBER`/`OWNER` association. A private organisation member reads as `CONTRIBUTOR`, so they should make their membership public or be listed by id.
 
+The `CLA` status turns green only after the agreement is in the record. If the write fails, the status stays failing ("Could not record your agreement. Comment /orbynAgree again to try again."), the one bot comment says so, and commenting `/orbynAgree` again retries.
+
 Existing contributors with no open pull request can agree by commenting `/orbynAgree` on any of their old pull requests.
 
 See [REVIEW.md](REVIEW.md) for the records, the security notes and the exact manual steps.

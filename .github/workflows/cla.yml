@@ -186,11 +186,80 @@ jobs:
               ].join('\n');
             }
 
+            function writeFailedBody(login) {
+              return [
+                MARKER,
+                `@${login}, we saw your \`/orbynAgree\`, but we could not record your agreement. Comment \`/orbynAgree\` again to try again.`,
+                '',
+                'If it keeps failing, tell a maintainer. The `CLA` check stays failing until the agreement is recorded.',
+              ].join('\n');
+            }
+
             function agreedBody(login, comment) {
               return [
                 MARKER,
                 `Thanks, @${login}. Your agreement to the [Orbyn Individual Contributor Licence Agreement](${CLA_URL}) is recorded${comment ? ` ([comment](${comment.html_url}))` : ''}. It covers all Orbyn repositories that use the agreement, so you will not be asked again.`,
               ].join('\n');
+            }
+
+            const WRITE_FAILED = 'Could not record your agreement. Comment /orbynAgree again to try again.';
+
+            /**
+             * The single place that decides the `CLA` status. Success only when the person is exempt,
+             * the record already holds their account id, or the write to the record has just succeeded.
+             * A failed write is a `failure` (the person must act), a failed read an `error`.
+             * `comment` says which bot comment to show; `throws` makes the run red.
+             */
+            function decideStatus({ exempt = false, readError, signed = false, agreementFound = false, writeOk = false, writeError }) {
+              if (exempt) return { state: 'success', description: 'No agreement needed', comment: 'none', throws: false };
+              if (readError) return { state: 'error', description: 'Could not check the agreement record.', comment: 'none', throws: true };
+              if (signed) return { state: 'success', description: 'Agreed to the Orbyn contributor agreement', comment: 'agreed-if-present', throws: false };
+              if (agreementFound && writeError) return { state: 'failure', description: WRITE_FAILED, comment: 'write-failed', throws: true };
+              if (agreementFound && writeOk) return { state: 'success', description: 'Agreed to the Orbyn contributor agreement', comment: 'agreed', throws: false };
+              if (agreementFound) return { state: 'failure', description: WRITE_FAILED, comment: 'write-failed', throws: true };
+              return { state: 'failure', description: 'Comment /orbynAgree once to agree to the Orbyn contributor agreement.', comment: 'ask', throws: false };
+            }
+
+            /**
+             * Run one check. `read()` returns the record, `findAgreementNow()` the author's valid
+             * `/orbynAgree` comment (or undefined), and `record(agreement)` writes the signature and
+             * must reject if it did not. Success after an agreement is only possible once `record`
+             * has resolved.
+             */
+            async function evaluate({ exempt, userId, read, findAgreementNow, record }) {
+              if (exempt) return { ...decideStatus({ exempt: true }), agreement: undefined, error: undefined };
+              let signed = false;
+              let readError;
+              let agreement;
+              let writeOk = false;
+              let writeError;
+              try {
+                signed = isSigned((await read()).list, userId);
+              } catch (error) {
+                readError = error;
+              }
+              if (!readError && !signed) {
+                agreement = findAgreementNow();
+                if (agreement) {
+                  try {
+                    await record(agreement);
+                    writeOk = true;
+                  } catch (error) {
+                    writeError = error;
+                  }
+                }
+              }
+              const decision = decideStatus({ readError, signed, agreementFound: Boolean(agreement), writeOk, writeError });
+              return { ...decision, agreement, error: readError ?? writeError };
+            }
+
+            /** The text of the one bot comment for a decision, or null when it should not be touched. */
+            function commentFor(kind, { login, agreement, hasOurs }) {
+              if (kind === 'ask') return askBody(login);
+              if (kind === 'agreed') return agreedBody(login, agreement);
+              if (kind === 'agreed-if-present') return hasOurs ? agreedBody(login, agreement) : null;
+              if (kind === 'write-failed') return writeFailedBody(login);
+              return null;
             }
             // matcher:end
 
@@ -216,7 +285,8 @@ jobs:
             });
 
             if (isExempt(pull, allowedIds)) {
-              await setStatus('success', 'No agreement needed');
+              const done = decideStatus({ exempt: true });
+              await setStatus(done.state, done.description);
               return;
             }
 
@@ -251,43 +321,39 @@ jobs:
               if (ours.body !== body) return github.rest.issues.updateComment({ owner, repo, comment_id: ours.id, body });
             };
 
-            let signed;
-            let agreement;
-            try {
-              signed = isSigned((await read()).list, pull.user.id);
-              if (!signed) {
-                agreement = findAgreement(comments, pull);
-                if (agreement) {
-                  const { data: cla } = await github.rest.repos.getContent({ owner: 'orbyn-dev', repo: '.github', path: 'CLA.md' });
-                  const entry = buildEntry({
-                    pull, comment: agreement, repository: `${owner}/${repo}`, version, headSha,
-                    bodySha256: require('crypto').createHash('sha256').update(agreement.body, 'utf8').digest('hex'),
-                    claBlobSha: cla.sha,
-                    recordedAt: new Date().toISOString(),
-                  });
-                  await recordSignature({
-                    read,
-                    write: (list, sha) => store.rest.repos.createOrUpdateFileContents({
-                      owner: sigOwner, repo: sigRepo, path, sha,
-                      message: `Record CLA ${version} agreement by ${pull.user.login} (${owner}/${repo}#${number})`,
-                      content: Buffer.from(JSON.stringify(list, null, 2) + '\n').toString('base64'),
-                    }),
-                    entry,
-                  });
-                  signed = true;
-                  core.info(`Recorded ${pull.user.login}.`);
-                }
+            const result = await evaluate({
+              exempt: false,
+              userId: pull.user.id,
+              read,
+              findAgreementNow: () => findAgreement(comments, pull),
+              record: async (agreement) => {
+                const { data: cla } = await github.rest.repos.getContent({ owner: 'orbyn-dev', repo: '.github', path: 'CLA.md' });
+                const entry = buildEntry({
+                  pull, comment: agreement, repository: `${owner}/${repo}`, version, headSha,
+                  bodySha256: require('crypto').createHash('sha256').update(agreement.body, 'utf8').digest('hex'),
+                  claBlobSha: cla.sha,
+                  recordedAt: new Date().toISOString(),
+                });
+                await recordSignature({
+                  read,
+                  write: (list, sha) => store.rest.repos.createOrUpdateFileContents({
+                    owner: sigOwner, repo: sigRepo, path, sha,
+                    message: `Record CLA ${version} agreement by ${pull.user.login} (${owner}/${repo}#${number})`,
+                    content: Buffer.from(JSON.stringify(list, null, 2) + '\n').toString('base64'),
+                  }),
+                  entry,
+                });
+                core.info(`Recorded ${pull.user.login}.`);
+              },
+            });
+
+            await setStatus(result.state, result.description);
+            const body = commentFor(result.comment, { login: pull.user.login, agreement: result.agreement, hasOurs: Boolean(ours) });
+            if (body) {
+              try {
+                await upsert(body);
+              } catch (error) {
+                core.warning(`Could not update the comment: ${error.message}`);
               }
-            } catch (error) {
-              await setStatus('error', 'Could not check the agreement record.');
-              throw error;
             }
-
-            if (signed) {
-              await setStatus('success', 'Agreed to the Orbyn contributor agreement');
-              if (ours || agreement) await upsert(agreedBody(pull.user.login, agreement));
-              return;
-            }
-
-            await setStatus('failure', 'Comment /orbynAgree once to agree to the Orbyn contributor agreement.');
-            await upsert(askBody(pull.user.login));
+            if (result.throws) throw result.error;
