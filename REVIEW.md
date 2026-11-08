@@ -43,7 +43,7 @@
 
 ## Known limits and follow-ups
 
-- **A required status can be faked.** A workflow in a fork PR can contain a job that posts a status named `CLA` (or whose check has the same name). Interim mitigation: in each covered repository set Settings, Actions, General, "Fork pull request workflows from outside collaborators" to "Require approval for all outside collaborators", and reviewers look at any change under `.github/workflows` before approving a run. The stronger fix is a dedicated GitHub App that posts the status, with that app set as the required source of `CLA`; this is a follow-up. The older "Licence grant" check has the same exposure.
+- **A required status can be faked.** A workflow in a fork PR can contain a job that posts a status named `CLA` (or whose check has the same name). Interim mitigation: in each covered repository set Settings, Actions, General, "Fork pull request workflows from outside collaborators" to "Require approval for all outside collaborators", and reviewers look at any change under `.github/workflows` before approving a run. The stronger fix is a dedicated GitHub App that posts the status, with that app set as the required source of `CLA`; this is a follow-up.
 - **Existing contributors without an open PR** (for example Luan) can agree by commenting `/orbynAgree` on any old pull request of theirs: the check also runs on comments, so this records the signature for every covered repository.
 - **The token expires.** A fine-grained personal access token expires, and then every check ends in an error until it is renewed. A GitHub App installation token is the better long-term option. Limit the org secret `CLA_SIGNATURES_TOKEN` to the covered repositories.
 
@@ -55,4 +55,4 @@ Nothing runs until these steps are done, and the only manual ones are:
 2. Anh runs `scripts/enable-cla.sh <repo>` for `orbyn-engine`, `orbyn-planner`, `orbyn-engineering`, `orbyn.dev` and `orbyn-notes`, and merges the pull request each opens.
 3. Anh requires the status check `CLA` on each repository's default branch, and sets "Require approval for all outside collaborators" for fork pull request workflows.
 
-The older "Licence grant" check (`licence-grant.yml`) stays in force until Anh switches over.
+The older "Licence grant" check was retired on 2026-11-08, once `CLA` was required in every covered repository.
