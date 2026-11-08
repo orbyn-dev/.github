@@ -4,7 +4,7 @@
 
 ## Why a CLA, and why this base
 
-- **Licences.** Orbyn's apps (orbyn-planner, orbyn-engineering) and orbyn.dev are under PolyForm Strict 1.0.0, which lets no one modify or share the code. The engine (orbyn-engine) is moving to MIT OR Apache-2.0. Taking outside contributions across both needs a grant broad enough for Us to license them under any of these, and commercially.
+- **Licences.** Orbyn's apps (orbyn-planner, orbyn-engineering), orbyn.dev and orbyn-notes are under PolyForm Strict 1.0.0, which lets no one modify or share the code. The engine (orbyn-engine) is moving to MIT OR Apache-2.0. Taking outside contributions across both needs a grant broad enough for Us to license them under any of these, and commercially.
 - **Base text:** the Harmony Individual Contributor License Agreement 1.0. Its own text says it is licensed under CC BY 3.0, so it can be adapted with credit.
 - **Apache ICLA, not used:** the Apache Individual CLA (https://www.apache.org/licenses/icla.pdf) was considered and not used. The document carries no licence or reuse grant of its own; the Apache-2.0 notice on apache.org is the website footer and covers the ASF's software. No Apache text is copied here.
 - **Outbound option:** Option Five ("any licence") was chosen so that one agreement covers PolyForm Strict, the engine's MIT OR Apache-2.0 and any future commercial licence. The engine keeps the CLA even though it is permissive, so one rule applies to every covered project and a commercial licence stays possible.
@@ -19,7 +19,7 @@
 6. **Minors.** 3(c) keeps Harmony's line that a parent or guardian should accept for anyone under eighteen. With acceptance by comment there is no way to verify this. Should the age line change, or should minors be refused?
 7. **Entity version.** The draft is the individual version only. Contributors whose employer owns their work need an entity agreement (Harmony has one, also CC BY 3.0). Should it be added now or on request?
 8. **Contributions made before this Agreement.** Drafted so that one acceptance covers everything the person has already Submitted, including work that is already merged, plus later contributions (see "How to accept"). This lets an existing contributor, such as Luan, sign once when the Agreement is in force. Please confirm that a later acceptance can validly cover earlier submissions in the relevant jurisdictions, whether the agreement should say the earlier work was contributed on the same terms from the date of each submission, and whether a short confirmation from existing contributors is needed in addition to the comment.
-9. **Which projects (decided).** The Agreement covers orbyn-engine, orbyn-planner, orbyn-engineering and orbyn.dev.
+9. **Which projects (decided).** The Agreement covers orbyn-engine, orbyn-planner, orbyn-engineering, orbyn.dev and orbyn-notes.
    - orbyn-designs is private. If outsiders ever get access, they would also need a confidentiality agreement, which this Agreement does not provide.
 10. **The MIT skills library (decided).** orbyn-fullstack-skills stays MIT for good. It doesn't use this Agreement: inbound equals outbound, with a Developer Certificate of Origin sign-off (`git commit -s`) on every commit.
 
@@ -36,7 +36,7 @@
 - **Who is checked.** Only the pull request's author. Co-authors listed in commits aren't checked yet. Organisation members and owners, and the account ids in `allowed`, need nothing (status `CLA` = success, "No agreement needed"). `allowed` holds numeric account ids, not logins (a login can be renamed and reused); the default is Anh (63905487), `dependabot[bot]` (49699333) and `github-actions[bot]` (41898282), all checked with the GitHub API. There is no blanket bot exemption: list any other bot by id. GitHub reports a private organisation member as `CONTRIBUTOR`, not `MEMBER`, so such a person should make their membership public or be listed by id.
 - **The `CLA` status.** The workflow sets a commit status named `CLA` on the pull request's head commit, from `pull_request_target` and from `issue_comment` (created). The run triggered by `/orbynAgree` records the signature and turns the status green, so there is no stale red check and no re-push or re-run. A repository requires the status context `CLA`.
 - **Security.** It runs on `pull_request_target` and `issue_comment`, and never checks out, builds or runs anything from the pull request. It reads event metadata, the author's account id, the head sha and comment bodies, and passes untrusted text only through the matcher functions, never a shell. Only a comment by the pull request's author (compared by account id), not by a bot, never edited, with the command alone on a line, counts.
-- **Covered repositories.** `orbyn-engine`, `orbyn-planner`, `orbyn-engineering` and `orbyn.dev` (decision 9). A caller passes the required `agreement-version` input; there is no default, so a repository that forgets it fails instead of recording agreement to the wrong version.
+- **Covered repositories.** `orbyn-engine`, `orbyn-planner`, `orbyn-engineering`, `orbyn.dev` and `orbyn-notes` (decision 9). A caller passes the required `agreement-version` input; there is no default, so a repository that forgets it fails instead of recording agreement to the wrong version.
 - **Not covered.** `orbyn-fullstack-skills` stays MIT with a DCO and has no CLA check.
 - **Not verified without a real run.** Setting a commit status from an `issue_comment` run and from a called workflow, and the contents API conflict codes, are written to GitHub's documented behaviour but have not been run against GitHub.
 
@@ -51,7 +51,7 @@
 Nothing runs until these steps are done, and the only manual ones are:
 
 1. Anh creates a fine-grained token with contents read and write on `orbyn-dev/cla-signatures` only, and saves it as the organisation secret `CLA_SIGNATURES_TOKEN`, limited to the covered repositories.
-2. Anh runs `scripts/enable-cla.sh <repo>` for `orbyn-engine`, `orbyn-planner`, `orbyn-engineering` and `orbyn.dev`, and merges the pull request each opens.
+2. Anh runs `scripts/enable-cla.sh <repo>` for `orbyn-engine`, `orbyn-planner`, `orbyn-engineering`, `orbyn.dev` and `orbyn-notes`, and merges the pull request each opens.
 3. Anh requires the status check `CLA` on each repository's default branch, and sets "Require approval for all outside collaborators" for fork pull request workflows.
 
 The older "Licence grant" check (`licence-grant.yml`) stays in force until Anh switches over.
