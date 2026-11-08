@@ -1,6 +1,6 @@
 # Review notes for counsel
 
-**DRAFT, not in force. Not legal advice.** These notes explain the draft in [CLA.md](CLA.md) and list what needs a decision before version 1.0.
+**Version 0.1 in force; legal review pending. Not legal advice.** These notes explain the agreement in [CLA.md](CLA.md) and list what counsel should decide before a reviewed version replaces it.
 
 ## Why a CLA, and why this base
 
