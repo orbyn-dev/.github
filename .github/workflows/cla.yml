@@ -1,6 +1,6 @@
-# DRAFT, not in force. A reusable check that the author of a pull request has agreed to the
+# A reusable check that the author of a pull request has agreed to the
 # Orbyn Individual Contributor Licence Agreement. It runs only when a repository calls it
-# (on: workflow_call); no repository does yet. See ../../REVIEW.md.
+# (on: workflow_call). See ../../REVIEW.md.
 #
 # One agreement covers every Orbyn repository: the author comments `/orbynAgree` once, the
 # signature goes to the single file signatures/icla-<version>.json in orbyn-dev/cla-signatures,

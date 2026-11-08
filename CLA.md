@@ -1,6 +1,6 @@
 # Orbyn Individual Contributor Licence Agreement
 
-**Version 0.1, DRAFT for legal review. Not in force.** This is not legal advice. Nothing here applies to anyone until it is reviewed, approved and published as version 1.0.
+**Version 0.1, in force; legal review pending.** A reviewed version may replace it, and contributors would then be asked to agree again. This is not legal advice.
 
 > Notes for counsel are in [the review notes](REVIEW.md). Bracketed text in capitals, such as `[JURISDICTION]`, is a placeholder still to be decided.
 

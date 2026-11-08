@@ -1,9 +1,9 @@
 # orbyn-dev/.github
 
-> **DRAFT, not in force, pending legal review.**
-> Nothing in this repository applies to any Orbyn project yet. No repository uses its workflows, and no contribution is accepted or refused because of it.
+> **Version 0.1 of the contributor agreement is in force; legal review is pending.**
+> A reviewed version may replace it, and contributors would then be asked to agree again. A repository uses these workflows only after its caller is merged.
 
-This repository will hold organisation-wide files for Orbyn projects, starting with a contributor licence agreement. The draft is under review in a pull request.
+This repository holds organisation-wide files for Orbyn projects, starting with the contributor licence agreement.
 
 Contact: hello@orbyn.dev
 
@@ -13,9 +13,9 @@ Contact: hello@orbyn.dev
 
 Product repositories call it from `examples/licence-grant-caller.yml`.
 
-## Contributor agreement check (draft, not in force)
+## Contributor agreement check
 
-`.github/workflows/cla.yml` is a reusable check for the draft [contributor agreement](CLA.md). A contributor comments `/orbynAgree` once on their own pull request; that covers every covered Orbyn repository. Organisation members and bots pass at once. The skills library (`orbyn-fullstack-skills`) stays MIT with a DCO and is not covered.
+`.github/workflows/cla.yml` is a reusable check for the [contributor agreement](CLA.md). A contributor comments `/orbynAgree` once on their own pull request; that covers every covered Orbyn repository. Organisation members and bots pass at once. The skills library (`orbyn-fullstack-skills`) stays MIT with a DCO and is not covered.
 
 ### Turning it on for a repository
 
