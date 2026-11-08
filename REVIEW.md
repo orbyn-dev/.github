@@ -14,7 +14,7 @@
 1. **Who "We" is.** The draft names Anh Dang, matching the PolyForm notice ("Copyright (c) 2026 Anh Dang"). If a company will hold the rights, it should be named here, together with what happens to existing grants if the rights move to that company. Section 6.3 covers assignment in general terms.
 2. **Licence or assignment.** The draft keeps copyright with the contributor and takes a broad licence. Harmony also has an assignment version. Is a licence with Option Five enough for later relicensing and enforcement, or is an assignment needed?
 3. **Section 2.7, the licence to prepare contributions.** It isn't in Harmony; it was added because PolyForm Strict forbids modification, so contributors would otherwise have no right to edit a local copy. Please check its scope: development and submission only, no distribution, and it lasts as long as the Agreement.
-4. **Acceptance by comment.** Contributors accept by posting a fixed sentence on their pull request, which is recorded with their GitHub account number. Is that sufficient evidence of agreement in the relevant jurisdictions, or is a signed form needed?
+4. **Acceptance by comment.** Contributors accept once by commenting `/orbynAgree` on their own pull request; the comment is recorded with their GitHub account number and covers every covered Orbyn repository. Is that sufficient evidence of agreement in the relevant jurisdictions, or is a signed form needed?
 5. **Governing law** (`[JURISDICTION]`).
 6. **Minors.** 3(c) keeps Harmony's line that a parent or guardian should accept for anyone under eighteen. With acceptance by comment there is no way to verify this. Should the age line change, or should minors be refused?
 7. **Entity version.** The draft is the individual version only. Contributors whose employer owns their work need an entity agreement (Harmony has one, also CC BY 3.0). Should it be added now or on request?
@@ -25,13 +25,25 @@
 
 ## Records
 
-- Acceptances go to a private repository, `orbyn-dev/cla-signatures`, one file per agreement version.
-- Each entry holds only the GitHub account number, login, date, pull request and comment link. No names, emails or addresses are stored in any public place.
-- The check in `.github/workflows/cla.yml` reads and writes that file with a token limited to that one repository. Anh creates the token when he approves the Agreement. No repository runs the check until then.
+- Acceptances go to one private repository, `orbyn-dev/cla-signatures`, one file per agreement version (`signatures/icla-<version>.json`). Every covered repository reads that same file, so a person who accepts in one repository is covered in all of them.
+- Each entry holds only the GitHub account number, login, date, the repository and pull request where they accepted, and the comment link. No names, emails or addresses are stored in any public place.
+- The check in `.github/workflows/cla.yml` reads and writes that file with a token limited to that one repository. Concurrent signatures are handled with the contents API `sha` and a retry on conflict.
 
 ## Technical notes (not for counsel)
 
 - **Base check.** The check is our own short script on `actions/github-script` v9.0.0 (MIT), pinned by commit. The common tool for this, CLA Assistant Lite (`contributor-assistant/github-action`, Apache-2.0), was archived in March 2026, so it isn't used. None of its code is copied.
-- **Who is checked.** Only the pull request's author. Co-authors listed in commits aren't checked yet.
-- **Re-running after acceptance.** Accepting by comment records the signature in its own run. The earlier failed check on the pull request stays red until the author pushes again or a maintainer re-runs it. This should be fixed before version 1.0.
-- **Running it.** The workflow runs only through `workflow_call`, and no repository calls it. Turning it on takes three steps: Anh creates the `CLA_SIGNATURES_TOKEN` org secret (a fine-grained token limited to `orbyn-dev/cla-signatures`), then each owner copies `examples/cla-caller.yml` into their own repository and adds the snippets.
+- **Who is checked.** Only the pull request's author. Co-authors listed in commits aren't checked yet. Organisation members and owners, bots and the `allowed` logins need nothing (status `CLA` = success, "No agreement needed").
+- **The `CLA` status.** The workflow sets a commit status named `CLA` on the pull request's head commit, from `pull_request_target` and from `issue_comment` (created). The run triggered by `/orbynAgree` records the signature and turns the status green, so there is no stale red check and no re-push or re-run. A repository requires the status context `CLA`.
+- **Security.** It runs on `pull_request_target` and `issue_comment`, and never checks out, builds or runs anything from the pull request. It reads event metadata, the author's account id, the head sha and comment bodies, and passes untrusted text only through the matcher functions, never a shell. Only a comment by the pull request's author (compared by account id), not by a bot, never edited, with the command alone on a line, counts.
+- **Not covered.** `orbyn-fullstack-skills` stays MIT with a DCO and has no CLA check.
+- **Not verified without a real run.** Setting a commit status from an `issue_comment` run and from a called workflow, and the contents API conflict codes, are written to GitHub's documented behaviour but have not been run against GitHub.
+
+## Running it
+
+Nothing runs until these steps are done, and the only manual ones are:
+
+1. Anh creates a fine-grained token with contents read and write on `orbyn-dev/cla-signatures` only, and saves it as the organisation secret `CLA_SIGNATURES_TOKEN` (available to the covered repositories).
+2. Anh runs `scripts/enable-cla.sh <repo>` for `orbyn-engine`, `orbyn-planner`, `orbyn-engineering` and `orbyn.dev`, and merges the pull request each opens.
+3. Anh requires the status check `CLA` on each repository's default branch.
+
+The older "Licence grant" check (`licence-grant.yml`) stays in force until Anh switches over.

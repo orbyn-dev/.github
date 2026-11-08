@@ -1,16 +1,29 @@
-# DRAFT, not in force. A reusable check that the author of a pull request has accepted the
+# DRAFT, not in force. A reusable check that the author of a pull request has agreed to the
 # Orbyn Individual Contributor Licence Agreement. It runs only when a repository calls it
 # (on: workflow_call); no repository does yet. See ../../REVIEW.md.
 #
-# The caller runs on pull_request_target and issue_comment. This workflow never checks out
-# or runs code from the pull request, so pull_request_target is safe here.
+# One agreement covers every Orbyn repository: the author comments `/orbynAgree` once, the
+# signature goes to the single file signatures/icla-<version>.json in orbyn-dev/cla-signatures,
+# and every calling repository reads that same file.
+#
+# It sets the commit status `CLA` on the pull request's head commit, from both events:
+# - pull_request_target (opened, synchronize, reopened) and
+# - issue_comment (created), so the status turns green in the same run that records the
+#   signature, with no re-push or re-run.
+# A repository requires the status context `CLA` (see ../../README.md).
+#
+# Security: the caller triggers on pull_request_target and issue_comment. This workflow never
+# checks out, builds or runs anything from the pull request. It reads only event metadata, the
+# pull request's author id and head sha, and comment bodies, and it passes untrusted text only
+# through the matcher functions below, never into a shell. Every write uses either the
+# workflow's GITHUB_TOKEN (status, comment) or the signatures token (the record).
 name: Contributor licence agreement
 
 on:
   workflow_call:
     inputs:
       agreement-version:
-        description: Version of CLA.md being accepted
+        description: Version of CLA.md being agreed to
         type: string
         default: "0.1"
       signatures-repository:
@@ -18,7 +31,7 @@ on:
         type: string
         default: orbyn-dev/cla-signatures
       allowed:
-        description: Comma-separated logins that never need to sign (maintainers and bots)
+        description: Comma-separated logins that never need to agree (maintainers and bots)
         type: string
         default: "kinqsradio,dependabot[bot],github-actions[bot]"
     secrets:
@@ -29,11 +42,20 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
+  statuses: write
 
 jobs:
   check:
+    name: CLA
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request_target' || (github.event_name == 'issue_comment' && github.event.issue.pull_request)
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event_name == 'issue_comment' && github.event.action == 'created' &&
+       github.event.issue.pull_request && github.event.comment.user.type != 'Bot')
+    concurrency:
+      group: orbyn-cla-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
+      cancel-in-progress: false
     steps:
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
@@ -43,19 +65,123 @@ jobs:
           SIGNATURES_TOKEN: ${{ secrets.signatures-token }}
         with:
           script: |
+            // matcher:start
+            const COMMAND = /^\/orbyn[ \t]*agree$/i;
+            const MARKER = '<!-- orbyn-cla -->';
+            const CLA_URL = 'https://github.com/orbyn-dev/.github/blob/main/CLA.md';
+
+            /**
+             * True when a comment holds the command alone on a line. Lines inside a code fence,
+             * quoted lines (>) and indented code do not count, and neither does the command
+             * inside a sentence or inside inline code.
+             */
+            function hasAgreeCommand(body) {
+              let fence = null;
+              for (const raw of String(body ?? '').replace(/\r/g, '').split('\n')) {
+                const opener = raw.match(/^ {0,3}(`{3,}|~{3,})/);
+                if (fence) {
+                  const closer = raw.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/);
+                  if (closer && closer[1][0] === fence[0] && closer[1].length >= fence.length) fence = null;
+                  continue;
+                }
+                if (opener) { fence = opener[1]; continue; }
+                if (/^(?: {4}|\t)/.test(raw) || /^\s*>/.test(raw)) continue;
+                if (COMMAND.test(raw.trim())) return true;
+              }
+              return false;
+            }
+
+            /** A comment counts when the pull request's author wrote it, it is not a bot, it was never edited, and it holds the command. */
+            function isAgreement(comment, pull) {
+              return Boolean(comment && comment.user && pull && pull.user)
+                && comment.user.id === pull.user.id
+                && comment.user.type !== 'Bot'
+                && comment.created_at === comment.updated_at
+                && hasAgreeCommand(comment.body);
+            }
+
+            /** The first valid agreement comment on a pull request, if any. */
+            function findAgreement(comments, pull) {
+              return comments.find((comment) => isAgreement(comment, pull));
+            }
+
+            /** Organisation members and owners, bots and the listed logins never need to agree. */
+            function isExempt(pull, allowedLogins) {
+              return pull.user.type === 'Bot'
+                || ['OWNER', 'MEMBER'].includes(pull.author_association)
+                || allowedLogins.includes(pull.user.login.toLowerCase());
+            }
+
+            /** True when the account id is already in the record. */
+            function isSigned(list, githubId) {
+              return list.some((entry) => Number(entry.github_id) === Number(githubId));
+            }
+
+            /**
+             * Add an entry to the shared record without losing a concurrent signature. `read`
+             * returns { list, sha }; `write(list, sha)` throws an error with status 409 (or 422
+             * when a create races with another create) if the file changed in between. On a
+             * conflict, read again and retry, up to `attempts` times.
+             */
+            async function recordSignature({ read, write, entry, attempts = 5, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) }) {
+              for (let attempt = 1; ; attempt++) {
+                const { list, sha } = await read();
+                if (isSigned(list, entry.github_id)) return { added: false, attempts: attempt };
+                try {
+                  await write([...list, entry], sha);
+                  return { added: true, attempts: attempt };
+                } catch (error) {
+                  if (![409, 422].includes(error?.status) || attempt >= attempts) throw error;
+                  await sleep(200 * attempt + Math.floor(Math.random() * 200));
+                }
+              }
+            }
+
+            function askBody(login) {
+              return [
+                MARKER,
+                `Thanks for your contribution, @${login}! Before it can be merged, please read the [Orbyn Individual Contributor Licence Agreement](${CLA_URL}).`,
+                '',
+                'If you agree, comment `/orbynAgree` on a line of its own. You do this once. It covers this pull request, your earlier contributions and every Orbyn repository that uses the agreement, so you will not be asked again anywhere else.',
+                '',
+                'The `CLA` check turns green as soon as you do.',
+              ].join('\n');
+            }
+
+            function agreedBody(login, comment) {
+              return [
+                MARKER,
+                `Thanks, @${login}. Your agreement to the [Orbyn Individual Contributor Licence Agreement](${CLA_URL}) is recorded${comment ? ` ([comment](${comment.html_url}))` : ''}. It covers all Orbyn repositories that use the agreement, so you will not be asked again.`,
+              ].join('\n');
+            }
+            // matcher:end
+
             const version = process.env.VERSION;
             const [sigOwner, sigRepo] = process.env.SIGNATURES.split('/');
             const path = `signatures/icla-${version}.json`;
-            const phrase = `I have read the Orbyn Individual Contributor Licence Agreement version ${version} and I agree to it.`;
-            const marker = `<!-- orbyn-cla:${version} -->`;
-            const allowed = new Set(process.env.ALLOWED.split(',').map((login) => login.trim().toLowerCase()).filter(Boolean));
-            const store = getOctokit(process.env.SIGNATURES_TOKEN);
+            const allowedLogins = process.env.ALLOWED.split(',').map((login) => login.trim().toLowerCase()).filter(Boolean);
             const { owner, repo } = context.repo;
-            const number = context.payload.pull_request?.number ?? context.payload.issue.number;
-            const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number: number });
-            const author = pull.user;
+            const number = Number(context.payload.pull_request?.number ?? context.payload.issue?.number);
+            if (!number) { core.setFailed('No pull request number.'); return; }
 
-            async function load() {
+            const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+            const setStatus = (state, description) => github.rest.repos.createCommitStatus({
+              owner, repo, sha: pull.head.sha, state, description, context: 'CLA', target_url: CLA_URL,
+            });
+
+            if (isExempt(pull, allowedLogins)) {
+              await setStatus('success', 'No agreement needed');
+              return;
+            }
+
+            if (!process.env.SIGNATURES_TOKEN) {
+              await setStatus('error', 'The agreement record is not configured.');
+              core.setFailed('The signatures-token secret is empty.');
+              return;
+            }
+            const store = getOctokit(process.env.SIGNATURES_TOKEN);
+
+            async function read() {
               try {
                 const { data } = await store.rest.repos.getContent({ owner: sigOwner, repo: sigRepo, path });
                 return { list: JSON.parse(Buffer.from(data.content, 'base64').toString('utf8')), sha: data.sha };
@@ -65,44 +191,52 @@ jobs:
               }
             }
 
-            if (allowed.has(author.login.toLowerCase())) {
-              core.info(`${author.login} is on the allowed list.`);
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: number });
+            // Bots may not claim the marker, so only a bot-written comment counts as ours.
+            const ours = comments.find((comment) => comment.user?.type === 'Bot' && comment.body?.includes(MARKER));
+            const upsert = async (body) => {
+              if (!ours) return github.rest.issues.createComment({ owner, repo, issue_number: number, body });
+              if (ours.body !== body) return github.rest.issues.updateComment({ owner, repo, comment_id: ours.id, body });
+            };
+
+            let signed;
+            let agreement;
+            try {
+              signed = isSigned((await read()).list, pull.user.id);
+              if (!signed) {
+                agreement = findAgreement(comments, pull);
+                if (agreement) {
+                  const entry = {
+                    github_id: pull.user.id,
+                    login: pull.user.login,
+                    signed_at: agreement.created_at,
+                    repository: `${owner}/${repo}`,
+                    pull_request: pull.html_url,
+                    comment_url: agreement.html_url,
+                  };
+                  await recordSignature({
+                    read,
+                    write: (list, sha) => store.rest.repos.createOrUpdateFileContents({
+                      owner: sigOwner, repo: sigRepo, path, sha,
+                      message: `Record CLA ${version} agreement by ${pull.user.login} (${owner}/${repo}#${number})`,
+                      content: Buffer.from(JSON.stringify(list, null, 2) + '\n').toString('base64'),
+                    }),
+                    entry,
+                  });
+                  signed = true;
+                  core.info(`Recorded ${pull.user.login}.`);
+                }
+              }
+            } catch (error) {
+              await setStatus('error', 'Could not check the agreement record.');
+              throw error;
+            }
+
+            if (signed) {
+              await setStatus('success', 'Agreed to the Orbyn contributor agreement');
+              if (ours || agreement) await upsert(agreedBody(pull.user.login, agreement));
               return;
             }
 
-            let { list, sha } = await load();
-            let signed = list.some((entry) => entry.github_id === author.id);
-
-            const comment = context.payload.comment;
-            if (!signed && comment && comment.user.id === author.id && comment.body.trim() === phrase) {
-              list.push({
-                github_id: author.id,
-                login: author.login,
-                signed_at: new Date().toISOString(),
-                pull_request: pull.html_url,
-                comment_id: comment.id,
-              });
-              await store.rest.repos.createOrUpdateFileContents({
-                owner: sigOwner, repo: sigRepo, path, sha,
-                message: `Record CLA ${version} acceptance by ${author.login}`,
-                content: Buffer.from(JSON.stringify(list, null, 2) + '\n').toString('base64'),
-              });
-              signed = true;
-              core.info(`Recorded ${author.login}.`);
-            }
-
-            if (signed) return;
-
-            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: number });
-            if (!comments.some((existing) => existing.body?.includes(marker))) {
-              await github.rest.issues.createComment({
-                owner, repo, issue_number: number,
-                body: [
-                  marker,
-                  `Thanks for your contribution, @${author.login}. Before we can merge it, please read the [Orbyn Individual Contributor Licence Agreement](https://github.com/orbyn-dev/.github/blob/main/CLA.md) and, if you agree, reply with exactly:`,
-                  '',
-                  `> ${phrase}`,
-                ].join('\n'),
-              });
-            }
-            core.setFailed(`${author.login} has not accepted the Orbyn CLA version ${version}.`);
+            await setStatus('failure', 'Comment /orbynAgree once to agree to the Orbyn contributor agreement.');
+            await upsert(askBody(pull.user.login));

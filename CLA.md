@@ -94,11 +94,9 @@ TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL YOU BE LIABL
 
 ## How to accept
 
-Comment on your pull request with exactly this sentence, from the GitHub account that opened it:
+Comment `/orbynAgree` on a line of its own on your pull request, from the GitHub account that opened it. (`/orbyn agree` works too, in any capitalisation. A quoted line, code, or the command inside a sentence does not count.)
 
-> I have read the Orbyn Individual Contributor Licence Agreement version 0.1 and I agree to it.
-
-Your acceptance covers that contribution, every contribution You Submitted to an Orbyn project before You accepted (including work that is already merged), and every later contribution You Submit while this version is in effect. You only need to accept once for all of it. We keep a record of your GitHub account number, login, the date and a link to the comment. We don't record your name, email or address.
+You only need to accept once. Your acceptance covers that contribution, every contribution You Submitted to an Orbyn project before You accepted (including work that is already merged), and every later contribution You Submit while this version is in effect, in every Orbyn repository that uses this Agreement. We keep one record of your GitHub account number, login, the date, the repository and pull request where You accepted, and a link to the comment. We don't record your name, email or address.
 
 ## Work You did not write
 
@@ -116,7 +114,7 @@ Changes from the template:
 - Chose Outbound Option Five ("any licence") in 2.3 and removed the other four options. Media follows the same rule.
 - Removed the optional "or Your Affiliates" wording, since this is the individual version.
 - Added Section 2.7, a licence to prepare contributions.
-- Replaced the signature blocks with acceptance by a pull request comment, and replaced the submission and non-owner placeholders with the two sections above.
+- Replaced the signature blocks with acceptance by a one-time `/orbynAgree` pull request comment, and replaced the submission and non-owner placeholders with the two sections above.
 - Used British spelling ("licence" as a noun) and Markdown headings.
 - Left `[JURISDICTION]` for counsel.
 

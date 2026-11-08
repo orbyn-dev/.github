@@ -1,6 +1,8 @@
 # EXAMPLE ONLY, not active. This file lives outside .github/workflows, so it never runs.
-# After Anh approves the Agreement and creates the CLA_SIGNATURES_TOKEN org secret, each
-# repository owner copies it to .github/workflows/cla.yml in their own repository.
+# After Anh approves the Agreement and creates the CLA_SIGNATURES_TOKEN org secret, copy it
+# to .github/workflows/cla.yml in a covered repository (scripts/enable-cla.sh does this in a
+# pull request). Replace SHA_OF_ORBYN_DEV_GITHUB_MAIN with the commit of orbyn-dev/.github to use.
+# Then require the status check `CLA` on the default branch.
 name: Contributor licence agreement
 
 on:
@@ -12,9 +14,11 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
+  statuses: write
 
 jobs:
   cla:
-    uses: orbyn-dev/.github/.github/workflows/cla.yml@main
+    uses: orbyn-dev/.github/.github/workflows/cla.yml@SHA_OF_ORBYN_DEV_GITHUB_MAIN
     secrets:
       signatures-token: ${{ secrets.CLA_SIGNATURES_TOKEN }}
