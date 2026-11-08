@@ -98,7 +98,7 @@ Comment on your pull request with exactly this sentence, from the GitHub account
 
 > I have read the Orbyn Individual Contributor Licence Agreement version 0.1 and I agree to it.
 
-Your acceptance covers that contribution and every later contribution You Submit to an Orbyn project while this version is in effect. We keep a record of your GitHub account number, login, the date and a link to the comment. We don't record your name, email or address.
+Your acceptance covers that contribution, every contribution You Submitted to an Orbyn project before You accepted (including work that is already merged), and every later contribution You Submit while this version is in effect. You only need to accept once for all of it. We keep a record of your GitHub account number, login, the date and a link to the comment. We don't record your name, email or address.
 
 ## Work You did not write
 
