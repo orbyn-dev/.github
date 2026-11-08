@@ -12,6 +12,9 @@
 #   signature, with no re-push or re-run.
 # A repository requires the status context `CLA` (see ../../README.md).
 #
+# Exempt: organisation members and owners (author_association), and the numeric account ids in
+# `allowed`. Ids, not logins. There is no blanket bot exemption; list a bot by its account id.
+#
 # Security: the caller triggers on pull_request_target and issue_comment. This workflow never
 # checks out, builds or runs anything from the pull request. It reads only event metadata, the
 # pull request's author id and head sha, and comment bodies, and it passes untrusted text only
@@ -23,17 +26,17 @@ on:
   workflow_call:
     inputs:
       agreement-version:
-        description: Version of CLA.md being agreed to
+        description: Version of CLA.md being agreed to. Required, with no default, so a repository that forgets it cannot record agreement to the wrong version.
         type: string
-        default: "0.1"
+        required: true
       signatures-repository:
         description: Private repository holding signatures/icla-<version>.json
         type: string
         default: orbyn-dev/cla-signatures
       allowed:
-        description: Comma-separated logins that never need to agree (maintainers and bots)
+        description: Comma-separated numeric GitHub account ids that never need to agree. Ids, not logins, because a login can be renamed and reused. Default 63905487 = kinqsradio (Anh), 49699333 = dependabot[bot], 41898282 = github-actions[bot].
         type: string
-        default: "kinqsradio,dependabot[bot],github-actions[bot]"
+        default: "63905487,49699333,41898282"
     secrets:
       signatures-token:
         description: Fine-grained token with contents read and write on the signatures repository only
@@ -52,7 +55,8 @@ jobs:
     if: >-
       github.event_name == 'pull_request_target' ||
       (github.event_name == 'issue_comment' && github.event.action == 'created' &&
-       github.event.issue.pull_request && github.event.comment.user.type != 'Bot')
+       github.event.issue.pull_request && github.event.comment.user.type != 'Bot' &&
+       contains(toLower(github.event.comment.body), 'agree'))
     concurrency:
       group: orbyn-cla-${{ github.repository }}-${{ github.event.pull_request.number || github.event.issue.number }}
       cancel-in-progress: false
@@ -77,7 +81,9 @@ jobs:
              */
             function hasAgreeCommand(body) {
               let fence = null;
-              for (const raw of String(body ?? '').replace(/\r/g, '').split('\n')) {
+              // HTML comments are invisible when rendered, so a command inside one does not count.
+              const visible = String(body ?? '').replace(/\r/g, '').replace(/<!--[\s\S]*?-->/g, '').replace(/<!--[\s\S]*$/, '');
+              for (const raw of visible.split('\n')) {
                 const opener = raw.match(/^ {0,3}(`{3,}|~{3,})/);
                 if (fence) {
                   const closer = raw.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/);
@@ -105,11 +111,42 @@ jobs:
               return comments.find((comment) => isAgreement(comment, pull));
             }
 
-            /** Organisation members and owners, bots and the listed logins never need to agree. */
-            function isExempt(pull, allowedLogins) {
-              return pull.user.type === 'Bot'
-                || ['OWNER', 'MEMBER'].includes(pull.author_association)
-                || allowedLogins.includes(pull.user.login.toLowerCase());
+            /** Numeric account ids from a comma- or space-separated list. Anything else is ignored. */
+            function parseIds(text) {
+              return String(text ?? '').split(/[\s,]+/).filter((item) => /^\d+$/.test(item)).map(Number);
+            }
+
+            /**
+             * Organisation members and owners, and the listed account ids, never need to agree.
+             * Ids are checked, not logins. A private organisation member reads as CONTRIBUTOR
+             * unless the membership is public, so list that person by id.
+             */
+            function isExempt(pull, allowedIds) {
+              return ['OWNER', 'MEMBER'].includes(pull.author_association)
+                || allowedIds.includes(Number(pull.user.id));
+            }
+
+            /** Parse the record from a base64 git blob (any size). Empty or missing means no signatures. */
+            function parseRecord(base64) {
+              const text = Buffer.from(String(base64 ?? ''), 'base64').toString('utf8').trim();
+              return text ? JSON.parse(text) : [];
+            }
+
+            /** One record entry: enough to show what was agreed even if the comment is later edited or deleted. */
+            function buildEntry({ pull, comment, repository, version, headSha, bodySha256, claBlobSha, recordedAt }) {
+              return {
+                github_id: pull.user.id,
+                login: pull.user.login,
+                agreement_version: version,
+                signed_at: comment.created_at,
+                recorded_at: recordedAt,
+                repository,
+                pull_request: pull.html_url,
+                comment_url: comment.html_url,
+                comment_sha256: bodySha256,
+                head_sha: headSha,
+                cla_blob_sha: claBlobSha,
+              };
             }
 
             /** True when the account id is already in the record. */
@@ -119,9 +156,9 @@ jobs:
 
             /**
              * Add an entry to the shared record without losing a concurrent signature. `read`
-             * returns { list, sha }; `write(list, sha)` throws an error with status 409 (or 422
-             * when a create races with another create) if the file changed in between. On a
-             * conflict, read again and retry, up to `attempts` times.
+             * returns { list, sha }; `write(list, sha)` throws an error with status 409 if the
+             * file changed in between, or 422 when a create (no sha) races with another create.
+             * On such a conflict, read again and retry, up to `attempts` times.
              */
             async function recordSignature({ read, write, entry, attempts = 5, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) }) {
               for (let attempt = 1; ; attempt++) {
@@ -131,7 +168,8 @@ jobs:
                   await write([...list, entry], sha);
                   return { added: true, attempts: attempt };
                 } catch (error) {
-                  if (![409, 422].includes(error?.status) || attempt >= attempts) throw error;
+                  const conflict = error?.status === 409 || (error?.status === 422 && sha === undefined);
+                  if (!conflict || attempt >= attempts) throw error;
                   await sleep(200 * attempt + Math.floor(Math.random() * 200));
                 }
               }
@@ -157,19 +195,27 @@ jobs:
             // matcher:end
 
             const version = process.env.VERSION;
+            if (!/^[0-9][0-9A-Za-z.-]*$/.test(version)) { core.setFailed('Invalid agreement-version.'); return; }
             const [sigOwner, sigRepo] = process.env.SIGNATURES.split('/');
-            const path = `signatures/icla-${version}.json`;
-            const allowedLogins = process.env.ALLOWED.split(',').map((login) => login.trim().toLowerCase()).filter(Boolean);
+            const dir = 'signatures';
+            const file = `icla-${version}.json`;
+            const path = `${dir}/${file}`;
+            const allowedIds = parseIds(process.env.ALLOWED);
             const { owner, repo } = context.repo;
             const number = Number(context.payload.pull_request?.number ?? context.payload.issue?.number);
             if (!number) { core.setFailed('No pull request number.'); return; }
 
-            const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+            // On pull_request_target the payload already holds the author and the head sha. A comment
+            // event carries neither the head sha nor reliable pull data, so fetch the pull request.
+            const pull = context.eventName === 'pull_request_target'
+              ? context.payload.pull_request
+              : (await github.rest.pulls.get({ owner, repo, pull_number: number })).data;
+            const headSha = pull.head.sha;
             const setStatus = (state, description) => github.rest.repos.createCommitStatus({
-              owner, repo, sha: pull.head.sha, state, description, context: 'CLA', target_url: CLA_URL,
+              owner, repo, sha: headSha, state, description, context: 'CLA', target_url: CLA_URL,
             });
 
-            if (isExempt(pull, allowedLogins)) {
+            if (isExempt(pull, allowedIds)) {
               await setStatus('success', 'No agreement needed');
               return;
             }
@@ -181,19 +227,25 @@ jobs:
             }
             const store = getOctokit(process.env.SIGNATURES_TOKEN);
 
+            // The contents API stops at 1 MB, so list the directory for the file's blob sha and
+            // read the blob through the git data API, which allows much larger files.
             async function read() {
+              let entries;
               try {
-                const { data } = await store.rest.repos.getContent({ owner: sigOwner, repo: sigRepo, path });
-                return { list: JSON.parse(Buffer.from(data.content, 'base64').toString('utf8')), sha: data.sha };
+                ({ data: entries } = await store.rest.repos.getContent({ owner: sigOwner, repo: sigRepo, path: dir }));
               } catch (error) {
                 if (error.status === 404) return { list: [], sha: undefined };
                 throw error;
               }
+              const found = Array.isArray(entries) ? entries.find((entry) => entry.name === file) : undefined;
+              if (!found) return { list: [], sha: undefined };
+              const { data: blob } = await store.rest.git.getBlob({ owner: sigOwner, repo: sigRepo, file_sha: found.sha });
+              return { list: parseRecord(blob.content), sha: found.sha };
             }
 
             const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: number });
-            // Bots may not claim the marker, so only a bot-written comment counts as ours.
-            const ours = comments.find((comment) => comment.user?.type === 'Bot' && comment.body?.includes(MARKER));
+            // Only our own bot's comment with the marker is ours; a user cannot claim it.
+            const ours = comments.find((comment) => comment.user?.login === 'github-actions[bot]' && comment.body?.includes(MARKER));
             const upsert = async (body) => {
               if (!ours) return github.rest.issues.createComment({ owner, repo, issue_number: number, body });
               if (ours.body !== body) return github.rest.issues.updateComment({ owner, repo, comment_id: ours.id, body });
@@ -206,14 +258,13 @@ jobs:
               if (!signed) {
                 agreement = findAgreement(comments, pull);
                 if (agreement) {
-                  const entry = {
-                    github_id: pull.user.id,
-                    login: pull.user.login,
-                    signed_at: agreement.created_at,
-                    repository: `${owner}/${repo}`,
-                    pull_request: pull.html_url,
-                    comment_url: agreement.html_url,
-                  };
+                  const { data: cla } = await github.rest.repos.getContent({ owner: 'orbyn-dev', repo: '.github', path: 'CLA.md' });
+                  const entry = buildEntry({
+                    pull, comment: agreement, repository: `${owner}/${repo}`, version, headSha,
+                    bodySha256: require('crypto').createHash('sha256').update(agreement.body, 'utf8').digest('hex'),
+                    claBlobSha: cla.sha,
+                    recordedAt: new Date().toISOString(),
+                  });
                   await recordSignature({
                     read,
                     write: (list, sha) => store.rest.repos.createOrUpdateFileContents({

@@ -26,24 +26,32 @@
 ## Records
 
 - Acceptances go to one private repository, `orbyn-dev/cla-signatures`, one file per agreement version (`signatures/icla-<version>.json`). Every covered repository reads that same file, so a person who accepts in one repository is covered in all of them.
-- Each entry holds only the GitHub account number, login, date, the repository and pull request where they accepted, and the comment link. No names, emails or addresses are stored in any public place.
+- Each entry holds only the GitHub account number, login, agreement version, the comment's creation time, the repository and pull request where they accepted, the comment link, the SHA-256 of the exact comment text (not the text), the pull request's head commit, and the git blob sha of `CLA.md` at that time. That proves what was agreed even if the comment is later edited or deleted. No names, emails or addresses are stored in any public place.
+- The file is read through the git blobs API, so it keeps working past the 1 MB limit of the contents API.
 - The check in `.github/workflows/cla.yml` reads and writes that file with a token limited to that one repository. Concurrent signatures are handled with the contents API `sha` and a retry on conflict.
 
 ## Technical notes (not for counsel)
 
 - **Base check.** The check is our own short script on `actions/github-script` v9.0.0 (MIT), pinned by commit. The common tool for this, CLA Assistant Lite (`contributor-assistant/github-action`, Apache-2.0), was archived in March 2026, so it isn't used. None of its code is copied.
-- **Who is checked.** Only the pull request's author. Co-authors listed in commits aren't checked yet. Organisation members and owners, bots and the `allowed` logins need nothing (status `CLA` = success, "No agreement needed").
+- **Who is checked.** Only the pull request's author. Co-authors listed in commits aren't checked yet. Organisation members and owners, and the account ids in `allowed`, need nothing (status `CLA` = success, "No agreement needed"). `allowed` holds numeric account ids, not logins (a login can be renamed and reused); the default is Anh (63905487), `dependabot[bot]` (49699333) and `github-actions[bot]` (41898282), all checked with the GitHub API. There is no blanket bot exemption: list any other bot by id. GitHub reports a private organisation member as `CONTRIBUTOR`, not `MEMBER`, so such a person should make their membership public or be listed by id.
 - **The `CLA` status.** The workflow sets a commit status named `CLA` on the pull request's head commit, from `pull_request_target` and from `issue_comment` (created). The run triggered by `/orbynAgree` records the signature and turns the status green, so there is no stale red check and no re-push or re-run. A repository requires the status context `CLA`.
 - **Security.** It runs on `pull_request_target` and `issue_comment`, and never checks out, builds or runs anything from the pull request. It reads event metadata, the author's account id, the head sha and comment bodies, and passes untrusted text only through the matcher functions, never a shell. Only a comment by the pull request's author (compared by account id), not by a bot, never edited, with the command alone on a line, counts.
+- **Covered repositories.** `orbyn-engine`, `orbyn-planner`, `orbyn-engineering` and `orbyn.dev` (decision 9). A caller passes the required `agreement-version` input; there is no default, so a repository that forgets it fails instead of recording agreement to the wrong version.
 - **Not covered.** `orbyn-fullstack-skills` stays MIT with a DCO and has no CLA check.
 - **Not verified without a real run.** Setting a commit status from an `issue_comment` run and from a called workflow, and the contents API conflict codes, are written to GitHub's documented behaviour but have not been run against GitHub.
+
+## Known limits and follow-ups
+
+- **A required status can be faked.** A workflow in a fork PR can contain a job that posts a status named `CLA` (or whose check has the same name). Interim mitigation: in each covered repository set Settings, Actions, General, "Fork pull request workflows from outside collaborators" to "Require approval for all outside collaborators", and reviewers look at any change under `.github/workflows` before approving a run. The stronger fix is a dedicated GitHub App that posts the status, with that app set as the required source of `CLA`; this is a follow-up. The older "Licence grant" check has the same exposure.
+- **Existing contributors without an open PR** (for example Luan) can agree by commenting `/orbynAgree` on any old pull request of theirs: the check also runs on comments, so this records the signature for every covered repository.
+- **The token expires.** A fine-grained personal access token expires, and then every check ends in an error until it is renewed. A GitHub App installation token is the better long-term option. Limit the org secret `CLA_SIGNATURES_TOKEN` to the covered repositories.
 
 ## Running it
 
 Nothing runs until these steps are done, and the only manual ones are:
 
-1. Anh creates a fine-grained token with contents read and write on `orbyn-dev/cla-signatures` only, and saves it as the organisation secret `CLA_SIGNATURES_TOKEN` (available to the covered repositories).
+1. Anh creates a fine-grained token with contents read and write on `orbyn-dev/cla-signatures` only, and saves it as the organisation secret `CLA_SIGNATURES_TOKEN`, limited to the covered repositories.
 2. Anh runs `scripts/enable-cla.sh <repo>` for `orbyn-engine`, `orbyn-planner`, `orbyn-engineering` and `orbyn.dev`, and merges the pull request each opens.
-3. Anh requires the status check `CLA` on each repository's default branch.
+3. Anh requires the status check `CLA` on each repository's default branch, and sets "Require approval for all outside collaborators" for fork pull request workflows.
 
 The older "Licence grant" check (`licence-grant.yml`) stays in force until Anh switches over.

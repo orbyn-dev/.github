@@ -39,7 +39,7 @@ case "$repo" in
 esac
 
 [ -n "$ref" ] || ref="$(gh api repos/orbyn-dev/.github/commits/main --jq .sha)"
-case "$ref" in *[!0-9a-f]*|"") echo "Not a commit sha: $ref" >&2; exit 1 ;; esac
+printf '%s' "$ref" | grep -Eq '^[0-9a-f]{40}$' || { echo "--ref must be a full 40-character commit sha, got: $ref" >&2; exit 1; }
 default_branch="$(gh api "repos/$repo" --jq .default_branch)"
 base_sha="$(gh api "repos/$repo/git/ref/heads/$default_branch" --jq .object.sha)"
 if gh api "repos/$repo/contents/$file?ref=$default_branch" >/dev/null 2>&1; then
@@ -47,7 +47,19 @@ if gh api "repos/$repo/contents/$file?ref=$default_branch" >/dev/null 2>&1; then
   exit 1
 fi
 
-content="$(sed "s/SHA_OF_ORBYN_DEV_GITHUB_MAIN/$ref/" "$template")"
+# Re-running is safe: stop if the branch or an open pull request already exists.
+open_pr="$(gh pr list --repo "$repo" --head "$branch" --state open --json url --jq '.[0].url // empty')"
+if [ -n "$open_pr" ]; then
+  echo "$repo already has an open pull request for $branch: $open_pr. Nothing to do." >&2
+  exit 0
+fi
+if gh api "repos/$repo/git/ref/heads/$branch" >/dev/null 2>&1; then
+  echo "$repo already has the branch $branch but no open pull request. Open one from it, or delete the branch and run this again." >&2
+  exit 1
+fi
+
+# Drop the "EXAMPLE ONLY, not active" header (everything before `name:`) from the live copy.
+content="$(awk 'found || /^name:/ { found = 1; print }' "$template" | sed "s/SHA_OF_ORBYN_DEV_GITHUB_MAIN/$ref/")"
 
 cat <<PLAN
 This will, in $repo:

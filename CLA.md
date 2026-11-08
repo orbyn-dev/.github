@@ -6,7 +6,7 @@
 
 Thank you for your interest in contributing to Orbyn projects published by Anh Dang ("We" or "Us").
 
-This contributor agreement ("Agreement") documents the rights granted by contributors to Us. To make this Agreement effective, accept it as described in [How to accept](#how-to-accept). This is a legally binding document, so please read it carefully before agreeing to it. The Agreement covers every Orbyn project whose repository links to it.
+This contributor agreement ("Agreement") documents the rights granted by contributors to Us. To make this Agreement effective, accept it as described in [How to accept](#how-to-accept). This is a legally binding document, so please read it carefully before agreeing to it. The Agreement covers every Orbyn project whose repository uses it.
 
 ## 1. Definitions
 
@@ -96,7 +96,7 @@ TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT WILL YOU BE LIABL
 
 Comment `/orbynAgree` on a line of its own on your pull request, from the GitHub account that opened it. (`/orbyn agree` works too, in any capitalisation. A quoted line, code, or the command inside a sentence does not count.)
 
-You only need to accept once. Your acceptance covers that contribution, every contribution You Submitted to an Orbyn project before You accepted (including work that is already merged), and every later contribution You Submit while this version is in effect, in every Orbyn repository that uses this Agreement. We keep one record of your GitHub account number, login, the date, the repository and pull request where You accepted, and a link to the comment. We don't record your name, email or address.
+You only need to accept once. Your acceptance covers that contribution, every contribution You Submitted to an Orbyn project before You accepted (including work that is already merged), and every later contribution You Submit while this version is in effect, in every Orbyn repository that uses this Agreement. We keep one record of your GitHub account number, login, the date, the repository and pull request where You accepted, a link to the comment, a fingerprint (hash) of its text and the version of this text You accepted. We don't record your name, email or address.
 
 ## Work You did not write
 
@@ -110,7 +110,7 @@ This Agreement is adapted from the [Harmony Individual Contributor License Agree
 
 Changes from the template:
 
-- Filled the placeholders. "We" is Anh Dang. The Agreement covers every Orbyn project whose repository links to it.
+- Filled the placeholders. "We" is Anh Dang. The Agreement covers every Orbyn project whose repository uses it.
 - Chose Outbound Option Five ("any licence") in 2.3 and removed the other four options. Media follows the same rule.
 - Removed the optional "or Your Affiliates" wording, since this is the individual version.
 - Added Section 2.7, a licence to prepare contributions.
