@@ -34,9 +34,9 @@ on:
         type: string
         default: orbyn-dev/cla-signatures
       allowed:
-        description: Comma-separated numeric GitHub account ids that never need to agree. Ids, not logins, because a login can be renamed and reused. Default 63905487 = kinqsradio (Anh), 49699333 = dependabot[bot], 41898282 = github-actions[bot].
+        description: Comma-separated numeric GitHub account ids that never need to agree. Ids, not logins, because a login can be renamed and reused. Default 63905487 = kinqsradio (Anh), 49699333 = dependabot[bot], 41898282 = github-actions[bot], 136622811 = coderabbitai[bot].
         type: string
-        default: "63905487,49699333,41898282"
+        default: "63905487,49699333,41898282,136622811"
     secrets:
       signatures-token:
         description: Fine-grained token with contents read and write on the signatures repository only
